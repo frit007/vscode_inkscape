@@ -33,7 +33,7 @@
 					"type": "string",
 					"description": "Inkscape absolute path",
 					"scope": "resource",
-					"default": "\"C:\\Program Files\\Inkscape\\inkscape.exe\""
+					"default": "\"C:\\Program Files\\Inkscape\\bin\\inkscape.exe\""
 				},
 				"context-snippets.inkscapefolder": {
 					"type": "string",
@@ -369,24 +369,24 @@
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run compile",
-		"compile": "tsc -p ./ & cp .\\src\\template.svg .\\out\\",
-		"watch": "cp .\\src\\template.svg .\\out\\ & tsc -watch -p ./",
+		"compile": "tsc -p ./ & copyfiles -f **/*.svg out",
+		"watch": "tsc -watch -p ./ & copyfiles -f **/*.svg out",
 		"pretest": "npm run compile && npm run lint",
 		"lint": "eslint src --ext ts",
 		"test": "node ./out/test/runTest.js"
 	},
 	"devDependencies": {
-		"@types/vscode": "^1.52.0",
 		"@types/glob": "^7.1.3",
 		"@types/mocha": "^8.0.4",
 		"@types/node": "^12.11.7",
-		"eslint": "^7.15.0",
+		"@types/vscode": "^1.52.0",
 		"@typescript-eslint/eslint-plugin": "^4.9.0",
 		"@typescript-eslint/parser": "^4.9.0",
+		"copyfiles": "^2.4.1",
+		"eslint": "^7.15.0",
 		"glob": "^7.1.6",
 		"mocha": "^8.1.3",
 		"typescript": "^4.1.2",
-		"vscode-test": "^1.4.1",
-		"copyfiles": "^2.4.1"
+		"vscode-test": "^1.4.1"
 	}
 }
