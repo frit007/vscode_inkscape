@@ -15,8 +15,6 @@ let lastLatexDoc : vscode.TextDocument | undefined = undefined
 let lastLatexDocViewColumn : vscode.ViewColumn| undefined = undefined
 // make sure we don't watch the same folder twice. Needs to be updated to support multiple folders
 let isWatching = false;
-// 
-let ignoreUpdates = false;
 
 function setActivePath(editor : vscode.TextEditor | undefined) {
     if(!editor) {
@@ -42,7 +40,7 @@ export function activate(context: vscode.ExtensionContext) {
     let disposable = vscode.commands.registerCommand("context-snippets.inkscape", () => {
 
         let filename = containsFile();
-        if(filename == null || !filename.includes('.pdf')) {
+        if(filename == null) {
             dialog()
             return;
         }
@@ -62,8 +60,23 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(disposable);
 }
 
+
+function workspaceFolder(): string {
+    if(vscode.workspace.workspaceFolders == undefined){
+        return ""
+    }
+    return vscode.workspace.workspaceFolders[0].uri.fsPath
+    
+}
+
+function svgFolder() : string {
+    return path.join(workspaceFolder(), inkscapefolder)
+}
 function convertPdfPathToSvg(filename: string) {
-    return path.join(workspaceFolder(), path.dirname(filename), path.parse(filename).name + ".svg")
+    return path.join(workspaceFolder(), inkscapefolder, path.parse(filename).name + ".svg")
+}
+function pdfPath(filepath:string):string {
+    return path.join(svgFolder(), path.parse(filepath).name + ".pdf");
 }
 
 function getTextBetweenBrackets(line :string, pos:number) :string | null{
@@ -108,30 +121,18 @@ function containsFile() : string | null {
 }
 
 
-function workspaceFolder(): string {
-    if(vscode.workspace.workspaceFolders == undefined){
-        return ""
-    }
-    return vscode.workspace.workspaceFolders[0].uri.fsPath
-    
-}
 
-function svgFolder() : string {
-    return path.join(workspaceFolder(), inkscapefolder)
-}
+
 
 function watchDirectory() {
     try {
-        // todo figure out something when swithing workspaces?
+        // todo figure out something when switching workspaces?
         if(isWatching) {
             return;
         }
-        // just in case unwatch the file first
-        // fs.unwatchFile(filePath)
+
         fs.watch(svgFolder(), {recursive: true, persistent:false}, (eventType, filename) => {
-            if(ignoreUpdates){
-                return;
-            }
+
             if(path.extname(filename) == ".svg") {
                 // convert all svgs to pdfs
                 exportToPdf(path.join(svgFolder(),filename));
@@ -172,27 +173,28 @@ async function dialog() {
     }
 
  
-    let snippet = `\\begin{figure}[ht]
+//     let snippet = `\\begin{figure}[ht]
+//     \\centering
+//     \\includegraphics{${path.join(inkscapefolder, path.parse(filename).name + ".pdf").replace(/\\/g, "/")}}
+//     \\caption{\${1:${filename}}}\\label{fig:\${2:${filename}}}
+// \\end{figure}
+// $0`
+let snippet = `\\begin{figure}[ht]
     \\centering
-    \\includegraphics{${path.join(inkscapefolder, path.parse(filename).name + ".pdf").replace(/\\/g, "/")}}
-    \\caption{\${1:${filename}}}\\label{fig:\${2:${filename}}}
+    \\incfig{${path.parse(filename).name}}
+    \\caption{\${1:${filename}}}
+    \\label{fig:\${2:${filename}}}
 \\end{figure}
 $0`
 
-		vscode.window.activeTextEditor?.insertSnippet(new vscode.SnippetString(snippet), vscode.window.activeTextEditor.selection)
-
-
-    let templatePath = getTemplate();
+    vscode.window.activeTextEditor?.insertSnippet(new vscode.SnippetString(snippet), vscode.window.activeTextEditor.selection)
     
     let svgPath = path.join(svgFolder(), filename + ".svg")
 
     try {
-        ignoreUpdates = true
         await copyFile(getTemplate(), svgPath)
     } catch(e) {
         vscode.window.showErrorMessage(e)
-    } finally {
-        ignoreUpdates = false;
     }
     
     watchDirectory();
@@ -200,21 +202,24 @@ $0`
     openInkscapeFile(svgPath)
 }
 function openInkscapeFile(file: string) {
-    let child = cp.exec(latexExe + " " + file)
+    let command=  latexExe + " \"" + file+"\"";
+    console.log(command)
+    let child = cp.exec(command, (err) => {
+        if(err) {
+            console.error(err)
+        }
+    })
 }
 
-function pdfPath(filepath:string):string {
-    return path.join(svgFolder(), path.parse(filepath).name + ".pdf");
-}
 
 // function latexPdfPath(filepath:string):string {
 //     return path.join(svgFolder(), path.parse(filepath).name+ "Latex" + ".pdf");
 // }
 
 
-function pdfTexFile(filepath:string) {
-    return path.join(workspaceFolder(), inkscapefolder, path.parse(filepath).name + ".pdf_tex" )
-}
+// function pdfTexFile(filepath:string) {
+//     return path.join(workspaceFolder(), inkscapefolder, path.parse(filepath).name + ".pdf_tex" )
+// }
 
 // function readWriteAsync(filepath: string, done :any) {
 //     fs.readFile(pdfTexFile(filepath), 'utf-8', function(err, data){
@@ -235,7 +240,16 @@ function pdfTexFile(filepath:string) {
 // }
 
 
+let cooldown = new Map<string, number>()
+
 function exportToPdf(filepath: string) {
+    let lastUse = cooldown.get(filepath) || 0;
+    cooldown.set(filepath, Date.now())
+    
+    if(Date.now() - lastUse < 500) {
+        console.log("skip double work ", lastUse);
+        return;
+    }
     // --export-latex
     // let command = `${latexExe} ${filepath} --export-area-page --export-dpi 300 --export-pdf ${pdfPath(filepath)} `
     // let command = `${latexExe} ${filepath} --export-area-page --export-dpi 300 --export-type="pdf" ${pdfPath(filepath)} `
