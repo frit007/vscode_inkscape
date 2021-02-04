@@ -18,6 +18,17 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// new vscode.DocumentSelector
 
+	// vscode.commands.registerCommand("context-snippets.selection_math_mode", () => {
+	// 	if(!vscode.window.activeTextEditor){
+	// 		return;
+	// 	}
+	// 	let editor = vscode.window.activeTextEditor;
+	// 	editor.edit(editorBuilder => {
+	// 		editorBuilder.insert(editor.selection.start, "$");
+	// 		editorBuilder.insert(editor.selection.end, "$");
+	// 	})
+	// })
+	
 	vscode.languages.registerCompletionItemProvider({language: 'latex'}, {
 		provideCompletionItems: (doc, pos, token, context) => {
 			let prefix = "";
@@ -75,7 +86,7 @@ export function activate(context: vscode.ExtensionContext) {
 	// The commandId parameter must match the command field in package.json
 	
 	
-	let disposable = vscode.commands.registerCommand('context-snippets.image_figure', () => {
+	let disposable = vscode.commands.registerCommand('context-snippets.image-figure', () => {
 		// The code you place here will be executed every time your command is executed
 
 		let eol = vscode.window.activeTextEditor?.document.eol;

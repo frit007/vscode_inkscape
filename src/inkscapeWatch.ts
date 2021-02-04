@@ -7,6 +7,7 @@ import * as fs from 'fs'
 import { rejects } from 'assert';
 import { fileURLToPath } from 'url';
 import { debug } from 'console';
+import { SvgGenerator } from './svgGenerator';
 
 
 
@@ -37,27 +38,48 @@ export function activate(context: vscode.ExtensionContext) {
     // try watching directory if it already exists
     watchDirectory();
 
+    let disposable3 = vscode.commands.registerCommand("context-snippets.inkscape-graph", () => {
+        let filename = currentlyHoveredFile();
+        if(filename == null || !fs.existsSync(svgPath(filename.text))) {
+            generateFigure()
+            return;
+        }
+
+        openInkscapeFile(filename.text)
+    })
+
     let disposable = vscode.commands.registerCommand("context-snippets.inkscape", () => {
 
-        let filename = containsFile();
-        if(filename == null) {
+        let filename = currentlyHoveredFile();
+        if(filename == null || !fs.existsSync(svgPath(filename.text))) {
             dialog()
             return;
         }
 
-        let svgPath = convertPdfPathToSvg(filename)
-        
-        if(!fs.existsSync(svgPath)) {
-            dialog()
-            return;
-        }
-
-        openInkscapeFile(svgPath)
+        openInkscapeFile(filename.text)
         // start with opening inkscape
         // then we want to create a template and save it in the directory
     })
 
+    let disposable2 = vscode.commands.registerCommand("context-snippets.rename-inkscape", () => {
+        let filename = currentlyHoveredFile();
+        if(!filename) {
+            vscode.window.showErrorMessage("Please place your cursor on the file you want to rename")
+            return;
+        }
+        
+        if(!fs.existsSync(svgPath(filename.text))) {
+            vscode.window.showErrorMessage("The file doesn't exist, please place your cursor on the file you want to rename")
+            return;
+        }
+        renameInkscapeFile(filename.text);
+    })
+
+
+
     context.subscriptions.push(disposable);
+    context.subscriptions.push(disposable2);
+    context.subscriptions.push(disposable3);
 }
 
 
@@ -65,21 +87,32 @@ function workspaceFolder(): string {
     if(vscode.workspace.workspaceFolders == undefined){
         return ""
     }
-    return vscode.workspace.workspaceFolders[0].uri.fsPath
-    
+    return vscode.workspace.workspaceFolders[0].uri.fsPath    
 }
 
 function svgFolder() : string {
     return path.join(workspaceFolder(), inkscapefolder)
 }
-function convertPdfPathToSvg(filename: string) {
-    return path.join(workspaceFolder(), inkscapefolder, path.parse(filename).name + ".svg")
+
+function svgPath(filename: string) {
+    return path.join(svgFolder(), path.parse(filename).name + ".svg")
 }
+
 function pdfPath(filepath:string):string {
     return path.join(svgFolder(), path.parse(filepath).name + ".pdf");
 }
+function pdfTexPath(filepath:string):string {
+    return path.join(svgFolder(), path.parse(filepath).name + ".pdf_tex");
+}
 
-function getTextBetweenBrackets(line :string, pos:number) :string | null{
+interface SelectedTextPosition {
+    // character in line
+    start: number
+    end: number
+    text: string
+}
+
+function getTextBetweenBrackets(line :string, pos:number) :SelectedTextPosition | null{
     
     let start = 0;
     let end = 0;
@@ -108,16 +141,37 @@ function getTextBetweenBrackets(line :string, pos:number) :string | null{
         }
     }
 
-    return line.substring(start + 1, end);
+    return {
+        start: start + 1, 
+        end,
+        text: line.substring(start + 1, end), 
+    };
 }
 
-function containsFile() : string | null {
+function currentlyHoveredFile() : SelectedTextPosition | null {
     const editor = vscode.window.activeTextEditor;
 
     let lineNumber = editor?.selection.start.line || 0;
     let line = editor?.document.lineAt(lineNumber).text || "";
 
     return getTextBetweenBrackets(line, editor?.selection.start.character || 0);
+}
+function replaceCurrentlyHoveredFile(currentFile: string, newName: string) {
+    const editor = vscode.window.activeTextEditor;
+
+    let lineNumber = editor?.selection.start.line || 0;
+    let line = editor?.document.lineAt(lineNumber).text || "";
+
+    let text = getTextBetweenBrackets(line, editor?.selection.start.character || 0);
+    if(text?.text == currentFile) {
+        vscode.window.activeTextEditor?.edit((editBuilder) => {
+            if(text != null) {
+                const startPos = new vscode.Position(lineNumber, text.start);
+                const endPos = new vscode.Position(lineNumber, text.end);
+                editBuilder.replace(new vscode.Range(startPos, endPos), newName)
+            }
+        })
+    }
 }
 
 
@@ -135,7 +189,7 @@ function watchDirectory() {
 
             if(path.extname(filename) == ".svg") {
                 // convert all svgs to pdfs
-                exportToPdf(path.join(svgFolder(),filename));
+                exportToPdf(filename);
             }
         })
         isWatching = true;
@@ -151,17 +205,58 @@ function getTemplate(): string {
 function copyFile(src:string, dist:string):Promise<string> {
     return new Promise((resolve, reject) => {
         fs.mkdir(path.dirname(dist), (err) => {
-            if(err) {
-                reject(err)
-            }
+            // if(err) {
+            //     reject(err)
+            //     return
+            // }
             fs.copyFile(src, dist, fs.constants.COPYFILE_EXCL, (err) => {
                 if(err) {
                     reject(err)
+                    return;
                 }
                 resolve("success");
             })
         })
     } )
+}
+
+function readableFile(file: string) :string {
+    return file.split('_').join(' ')
+}
+
+async function generateFigure() {
+    let filename = await vscode.window.showInputBox({value: "",prompt:"Figure name"})
+    if(filename === undefined) {
+        // if they cancelled the dialog then quit
+        return;
+    }
+
+    let snippet = `\\begin{figure}[H]
+    \\centering
+    \\incfig{${path.parse(filename).name}}
+    \\caption{\${1:${readableFile(filename)}}}
+    \\label{fig:\${2:${filename}}}
+\\end{figure}
+$0`
+
+
+    vscode.window.activeTextEditor?.insertSnippet(new vscode.SnippetString(snippet), vscode.window.activeTextEditor.selection)
+
+    try {
+        await copyFile(getTemplate(), svgPath(filename))
+    } catch(e) {
+        vscode.window.showErrorMessage(e)
+    }
+
+    watchDirectory();
+
+    let generator = new SvgGenerator(filename);
+
+    generator.add2dGraph(-2,-2,5,5)
+
+    await generator.toFile(svgPath(filename))
+
+    openInkscapeFile(filename)
 }
 
 async function dialog() {
@@ -179,13 +274,13 @@ async function dialog() {
 //     \\caption{\${1:${filename}}}\\label{fig:\${2:${filename}}}
 // \\end{figure}
 // $0`
-let snippet = `\\begin{figure}[ht]
+let snippet = `\\begin{figure}[H]
     \\centering
     \\incfig{${path.parse(filename).name}}
     \\caption{\${1:${filename}}}
     \\label{fig:\${2:${filename}}}
 \\end{figure}
-$0`
+$0` 
 
     vscode.window.activeTextEditor?.insertSnippet(new vscode.SnippetString(snippet), vscode.window.activeTextEditor.selection)
     
@@ -202,7 +297,7 @@ $0`
     openInkscapeFile(svgPath)
 }
 function openInkscapeFile(file: string) {
-    let command=  latexExe + " \"" + file+"\"";
+    let command=  latexExe + " \"" + svgPath(file)+"\"";
     console.log(command)
     let child = cp.exec(command, (err) => {
         if(err) {
@@ -212,9 +307,7 @@ function openInkscapeFile(file: string) {
 }
 
 
-// function latexPdfPath(filepath:string):string {
-//     return path.join(svgFolder(), path.parse(filepath).name+ "Latex" + ".pdf");
-// }
+
 
 
 // function pdfTexFile(filepath:string) {
@@ -253,7 +346,7 @@ function exportToPdf(filepath: string) {
     // --export-latex
     // let command = `${latexExe} ${filepath} --export-area-page --export-dpi 300 --export-pdf ${pdfPath(filepath)} `
     // let command = `${latexExe} ${filepath} --export-area-page --export-dpi 300 --export-type="pdf" ${pdfPath(filepath)} `
-    let command = `${latexExe} "${filepath}" --export-area-page --export-dpi 300 --export-type="pdf" --export-latex --export-filename "${pdfPath(filepath)}"`
+    let command = `${latexExe} "${svgPath(filepath)}" --export-area-page --export-dpi 300 --export-type="pdf" --export-latex --export-filename "${pdfPath(filepath)}"`
     console.log(command)
     // cp.exec(command2)
 
@@ -284,4 +377,36 @@ function exportToPdf(filepath: string) {
     // '--export-dpi', '300',
     // '--export-pdf', pdf_path,
     // '--export-latex', filepath
+}
+
+async function renameInkscapeFile(filename:string) {
+    let newFileName = await vscode.window.showInputBox({value: path.parse(filename).name, prompt:"New file name"})
+    if(newFileName === undefined || filename.length == 0) {
+        // if they cancelled the dialog then quit
+        return;
+    }
+
+    if(fs.existsSync(svgPath(newFileName))) {
+        vscode.window.showWarningMessage("filename already taken");
+        return;
+    }
+
+    try {
+        await copyFile(svgPath(filename), svgPath(newFileName))
+    } catch(e) {
+        vscode.window.showErrorMessage("Could not copy the file")
+        return
+    }
+
+    fs.unlink(svgPath(filename),(err) => {
+
+    })
+    fs.unlink(pdfPath(filename),(err) => {
+        
+    })
+    fs.unlink(pdfTexPath(filename),(err) => {
+        
+    })
+
+    replaceCurrentlyHoveredFile(filename, newFileName)
 }
