@@ -158,40 +158,60 @@ export class SvgGenerator {
         };
         return this.addLine(startX, startY, endX, endY, options);
     }
+    private asCloseToZeroAsPossible(min: number, max:number):number {
+        if(min <= 0 && 0 <= max) {
+            return 0;
+        }
+        if(min >= 0) {
+            return min;
+        }
+        return max;
+    }
 
-    add2dGraph(minX: number, minY: number, maxX: number, maxY:number) {
-        let stepsX = maxX - minX
-        let distanceX = (this.documentWidth - 10) / stepsX
-        let offsetX =  -minX * distanceX
-
-
-        let stepsY = maxY - minY
-        let distanceY = -(this.documentHeight - 10) / stepsY
-        let offsetY = -minY * distanceY + this.documentHeight
-
-        let midX = Math.floor((maxX - minX)/2 + minX)
-        let midY = Math.floor((maxY - minY)/2 + minY)
-        let midXPos = midX * distanceX + offsetX
-        let midYPos = midY * distanceY + offsetY
+    add2dGraph(focusX :number, focusY :number, length: number) {
         
-        let borderOffset = 5;
-        let markerLength = 3;
-        this.addArrow(borderOffset, midYPos, this.documentWidth -borderOffset, midYPos)
-        this.addArrow(midXPos, this.documentHeight - borderOffset, midXPos, borderOffset)
+        let minWidth = this.documentWidth < this.documentHeight ? this.documentWidth : this.documentHeight
 
-        for(let x = minX + 1; x <= maxX; x++) {
+        let xLength = Math.floor((this.documentWidth / minWidth) * length)
+        let yLength = Math.floor((this.documentHeight / minWidth) * length)
+        
+        let minX = focusX - Math.floor(xLength/2)
+        let maxX = focusX + Math.ceil(xLength/2)
+        let minY = focusY - Math.floor(yLength/2)
+        let maxY = focusY + Math.ceil(yLength/2)
+
+        let borderOffset = 5;
+
+        let distance = (minWidth- (borderOffset *2)) / length ;
+
+        let offsetX = -minX * distance + borderOffset //minX * distance
+        let offsetY = -minY * distance + borderOffset //minY * distance
+
+        let midX = this.asCloseToZeroAsPossible(minX, maxX)
+        let midY = this.asCloseToZeroAsPossible(minY, maxY)
+        // let midXPos = (midX - minX) * distance + borderOffset
+        // let midYPos = (midY - minY) * distance + borderOffset
+        let midXPos = midX * distance + offsetX
+        let midYPos = midY * distance + offsetY
+        
+        let markerLength = 3;
+        this.addArrow(0, midYPos, this.documentWidth, midYPos)
+        this.addArrow(midXPos, this.documentHeight, midXPos, 0)
+
+        for(let x = minX; x <= maxX; x++) {
             if (x != midX) {
-                let xPos = x * distanceX + offsetX;
+                let xPos = x * distance + offsetX;
                 this.addLine(xPos, midYPos + markerLength, xPos, midYPos - markerLength)
-                this.addText(xPos +3, midYPos + 5, x - 1 +"");
+                this.addText(xPos +3, midYPos + 5, x  +"");
             }
         }
 
-        for(let y = minX + 1; y <= maxY; y++) {
+        for(let y = minY; y <= maxY; y++) {
             if (y != midY) {
-                let yPos = y * distanceY + offsetY;
+                let yValue = minY - y + maxY;
+                let yPos = y * distance + offsetY;
                 this.addLine(midXPos + markerLength, yPos, midXPos - markerLength, yPos)
-                this.addText(midXPos + 5, yPos, y - 1 + "");
+                this.addText(midXPos + 5, yPos, yValue  + "");
             }
         }
     }

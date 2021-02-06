@@ -252,7 +252,7 @@ $0`
 
     let generator = new SvgGenerator(filename);
 
-    generator.add2dGraph(-2,-2,5,5)
+    generator.add2dGraph(0,0,8)
 
     await generator.toFile(svgPath(filename))
 
@@ -277,7 +277,7 @@ async function dialog() {
 let snippet = `\\begin{figure}[H]
     \\centering
     \\incfig{${path.parse(filename).name}}
-    \\caption{\${1:${filename}}}
+    \\caption{\${1:${readableFile(filename)}}}
     \\label{fig:\${2:${filename}}}
 \\end{figure}
 $0` 
